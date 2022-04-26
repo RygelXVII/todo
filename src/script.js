@@ -1,26 +1,12 @@
 var incompleteTasksHolder = $();
 var completedTasksHolder = $();
 
-// ---  Function for Editing an existing task ---
-var editTask = function () {
-    var listItem = $(this).parent();
-    var listTextInput = listItem.find('input[type="text"]');
-    var listLabel = listItem.find('label');
-    if ( listItem.hasClass('editMode') ) {
-        listLabel.text( listTextInput.val() );
-        listTextInput.removeAttr('value');
-        listItem.removeAttr('class');
-        $(this).text('Edit');
-    } else {
-        listTextInput.val( listLabel.text() );
-        listItem.addClass('editMode');
-        $(this).text('Save');
-    }
-};
-
 // ---  Function for Deleting an existing task ---
-var deleteTask = function () {
-    $(this).parent().remove();
+var deleteTask = function (e) {
+    var th = $(this);
+    $.post('/delete', {id: e.data.id}, function( data ) {
+        th.parent().remove();
+    });
 };
 
 // ---  Function for Adding a new task ---
@@ -31,15 +17,15 @@ var addTask = function() {
         alert('You Can\'t add a Empty Task');
     } else {
         let valInput = taskInput.val();
-        $.post('/create', {task: valInput})
-        let listItem = $('<li><input type="checkbox"><label>' + valInput + '</label><input type="text"><button class="edit">Edit</button><button class="delete">Delete</button></li>');
-        incompleteTasksHolder.append(listItem);
-        taskInput.val('');
-        //Bind Event Handler to the task that was Added
-        let newTaskAdded = incompleteTasksHolder.find('li').last();
-        newTaskAdded.find('.edit').on('click', editTask);
-        newTaskAdded.find('.delete').on('click', deleteTask);
-        newTaskAdded.find('input[type="checkbox"]').on('click', markTask);
+        $.post('/create', {task: valInput}, function( data ) {
+            let listItem = $('<li><input type="checkbox"><label>' + valInput + '</label><input type="text"><button class="delete">Delete</button></li>');
+            incompleteTasksHolder.append(listItem);
+            taskInput.val('');
+            //Bind Event Handler to the task that was Added
+            let newTaskAdded = incompleteTasksHolder.find('li').last();
+            newTaskAdded.find('.delete').on('click', {id: data}, deleteTask);
+            newTaskAdded.find('input[type="checkbox"]').on('click', markTask);
+        }, 'text')
     }
 };
 
@@ -51,7 +37,6 @@ var markTask = function() {
             task.find('label').text( task.find('input[type="text"]').val() )
             task.find('input[type="text"]').removeAttr('value');
             task.removeAttr('class');
-            task.find('.edit').text('Edit');
         }
     }
 
@@ -72,7 +57,6 @@ var markTask = function() {
 
 // --- Function for binding Event Handler ---
 function bindTaskEvents (item) {
-    item.find('.edit').on('click', editTask);
     item.find('.delete').on('click', deleteTask);
     item.find('input[type="checkbox"]').on('click', markTask);
 }

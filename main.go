@@ -1,30 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
-	"time"
+	"strconv"
 
-	"github.com/claygod/coffer"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var tpl = template.Must(template.ParseFiles("index.html"))
 
-const curDir = "save/"
-
 func main() {
-	message := "Hello World!"
-	message1 := "1"
-	message2 := "23"
+	fmt.Println("Hello World!")
 
-	arrayGo := [5]int{1, 5, 75, 33, 5}
-
-	fmt.Println(message)
-	fmt.Println(message1)
-	fmt.Println(message2)
-	fmt.Println(arrayGo)
 	startServer()
 
 }
@@ -43,70 +34,89 @@ func startServer() {
 	log.Fatal(err)
 }
 
+type task struct {
+	id      int
+	text    string
+	checked bool
+}
+
+type templateData struct {
+	Tasks []task
+}
+
 // Обработчик главной странице.
 func home(w http.ResponseWriter, r *http.Request) {
-	// STEP init
-	db, err, wrn := coffer.Db(curDir).Create()
-	switch {
-	case err != nil:
-		fmt.Println("Error:", err)
-		return
-	case wrn != nil:
-		fmt.Println("Warning:", err)
-		return
+	db, err := sql.Open("sqlite3", "task.db")
+	if err != nil {
+		panic(err)
 	}
-	if !db.Start() {
-		fmt.Println("Error: not start")
-		return
+	defer db.Close()
+	rows, err := db.Query("select * from tasks where checked = false")
+	if err != nil {
+		panic(err)
 	}
-	defer db.Stop()
+	defer rows.Close()
 
-	keys := db.RecordsList()
-	rep := db.ReadList(keys.Data)
-	rep.IsCodeError()
-	if rep.IsCodeError() {
-		fmt.Sprintf("Read error: code `%v` msg `%v`", rep.Code, rep.Error)
-		return
+	tasks := []task{}
+
+	for rows.Next() {
+		p := task{}
+		err := rows.Scan(&p.id, &p.text, &p.checked)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		tasks = append(tasks, p)
 	}
 
-	tpl.Execute(w, rep.Data)
+	data := &templateData{Tasks: tasks}
+
+	tpl.Execute(w, data)
 }
 
 // Создание задачи
 func create(w http.ResponseWriter, r *http.Request) {
-	task := r.URL.Query().Get("task")
-	// STEP init
-	db, err, wrn := coffer.Db(curDir).Create()
-	switch {
-	case err != nil:
-		fmt.Println("Error:", err)
-		return
-	case wrn != nil:
-		fmt.Println("Warning:", err)
-		return
-	}
-	if !db.Start() {
-		fmt.Println("Error: not start")
-		return
-	}
-	defer db.Stop()
-
-	// STEP write
-	uuid := string(time.Now().Unix())
-
-	if rep := db.Write(uuid, []byte(task)); rep.IsCodeError() {
-		fmt.Sprintf("Write error: code `%d` msg `%s`", rep.Code, rep.Error)
-		return
+	r.ParseForm()
+	task_text := r.Form.Get("task")
+	if len(task_text) < 1 {
+		panic("error")
 	}
 
-	w.Write([]byte(uuid))
+	db, err := sql.Open("sqlite3", "task.db")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	result, err := db.Exec("insert into tasks (text, checked) values ( $1, false)", task_text)
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := result.LastInsertId()
+	fmt.Println(id)
+	w.Write([]byte(strconv.FormatInt(id, 10)))
 }
 
 // Удаление задачи
 func delete(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
+	r.ParseForm()
+	id := r.Form.Get("id")
 
-	w.Write([]byte("Создание задачи"))
-	w.Write([]byte("\n"))
-	w.Write([]byte(id))
+	db, err := sql.Open("sqlite3", "task.db")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// удаляем строку с id=1
+	result, err := db.Exec("delete from tasks where id = $1", id)
+	if err != nil {
+		panic(err)
+	}
+
+	count, err := result.RowsAffected() // количество удаленных строк
+	fmt.Println(count)
+	w.Write([]byte(strconv.FormatInt(count, 10)))
+
 }
